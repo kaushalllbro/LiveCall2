@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiveCall.io</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#f97316">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0a0a0a;
+      color: white;
+    }
+
+    .mirror {
+      transform: scaleX(-1);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #262626;
+      border-radius: 10px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #404040;
+    }
+  </style>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module">
+    import React, { useState, useEffect, useRef } from 'https://esm.sh/react@19';
+    import ReactDOM from 'https://esm.sh/react-dom@19/client';
+    import { 
+      Video, VideoOff, Mic, MicOff, Phone, PhoneOff, Copy, User, LogOut, Loader2, AlertCircle, Clock, History, ArrowUpRight, ArrowDownLeft, X, Send, MessageSquare, MonitorUp 
+    } from 'https://esm.sh/lucide-react';
+    import { motion, AnimatePresence } from 'https://esm.sh/motion/react';
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+    import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, addDoc, query, where, deleteDoc, getDocs, or, orderBy, limit, getDocFromServer } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      "projectId": "gen-lang-client-0027443780",
+      "appId": "1:298610100251:web:f0553fb8729b762f7350be",
+      "apiKey": "AIzaSyDpWHbTdYUqvw6DxP7DetiYV1gDH6ge5xs",
+      "authDomain": "gen-lang-client-0027443780.firebaseapp.com",
+      "firestoreDatabaseId": "ai-studio-9f15cb92-9ec7-4daf-b1e7-28d027adb64b",
+      "storageBucket": "gen-lang-client-0027443780.firebasestorage.app",
+      "messagingSenderId": "298610100251",
+      "measurementId": ""
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    const googleProvider = new GoogleAuthProvider();
+
+    const ADMIN_EMAIL = 'kaushalllsharma24@gmail.com';
+
+    const ADJECTIVES = ['Cool', 'Happy', 'Fast', 'Smart', 'Brave', 'Kind', 'Calm', 'Bold', 'Swift', 'Wise'];
+    const NOUNS = ['Tiger', 'Eagle', 'Shark', 'Lion', 'Wolf', 'Bear', 'Falcon', 'Panda', 'Fox', 'Hawk'];
+
+    function generateReadableId() {
+      const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+      const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+      const num = Math.floor(100 + Math.random() * 899);
+      return `${adj}${noun}${num}`;
+    }
+
+    const OperationType = {
+      CREATE: 'create',
+      UPDATE: 'update',
+      DELETE: 'delete',
+      LIST: 'list',
+      GET: 'get',
+      WRITE: 'write',
+    };
+
+    function handleFirestoreError(error, operationType, path) {
+      const errInfo = {
+        error: error instanceof Error ? error.message : String(error),
+        authInfo: {
+          userId: auth.currentUser?.uid,
+          email: auth.currentUser?.email,
+          emailVerified: auth.currentUser?.emailVerified,
+          isAnonymous: auth.currentUser?.isAnonymous,
+          tenantId: auth.currentUser?.tenantId,
+          providerInfo: auth.currentUser?.providerData.map(provider => ({
+            providerId: provider.providerId,
+            displayName: provider.displayName,
+            email: provider.email,
+            photoUrl: provider.photoURL
+          })) || []
+        },
+        operationType,
+        path
+      };
+      console.error('Firestore Error: ', JSON.stringify(errInfo));
+      throw new Error(JSON.stringify(errInfo));
+    }
+
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+      }
+
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+
+      render() {
+        if (this.state.hasError) {
+          let errorMessage = "Something went wrong.";
+          try {
+            const parsed = JSON.parse(this.state.error.message);
+            if (parsed.error) errorMessage = `Firestore Error: ${parsed.error}`;
+          } catch (e) {
+            errorMessage = this.state.error?.message || errorMessage;
+          }
+
+          return React.createElement('div', { className: "min-h-screen bg-neutral-950 flex items-center justify-center p-4" },
+            React.createElement('div', { className: "bg-neutral-900 border border-red-500/50 p-8 rounded-3xl max-w-md w-full text-center space-y-4" },
+              React.createElement(AlertCircle, { className: "w-12 h-12 text-red-500 mx-auto" }),
+              React.createElement('h2', { className: "text-xl font-bold text-white" }, "Application Error"),
+              React.createElement('p', { className: "text-neutral-400 text-sm" }, errorMessage),
+              React.createElement('button', { 
+                onClick: () => window.location.reload(),
+                className: "w-full bg-neutral-800 hover:bg-neutral-700 py-3 rounded-xl transition-colors"
+              }, "Reload App")
+            )
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    const servers = {
+      iceServers: [
+        {
+          urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'],
+        },
+      ],
+      iceCandidatePoolSize: 10,
+    };
+
+    function LiveCallApp() {
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [remoteUserId, setRemoteUserId] = useState('');
+      const [callId, setCallId] = useState(null);
+      const [isCalling, setIsCalling] = useState(false);
+      const [isIncomingCall, setIsIncomingCall] = useState(false);
+      const [incomingCallData, setIncomingCallData] = useState(null);
+      const [localStream, setLocalStream] = useState(null);
+      const [remoteStream, setRemoteStream] = useState(null);
+      const [isMicOn, setIsMicOn] = useState(true);
+      const [isCamOn, setIsCamOn] = useState(true);
+      const [error, setError] = useState(null);
+      const [callHistory, setCallHistory] = useState([]);
+      const [showHistory, setShowHistory] = useState(false);
+      const [customId, setCustomId] = useState('');
+      const [isEditingId, setIsEditingId] = useState(false);
+      const [callDuration, setCallDuration] = useState(0);
+      const [isRemoteMutedByHost, setIsRemoteMutedByHost] = useState(false);
+      const [isCaller, setIsCaller] = useState(false);
+      const [showEmailModal, setShowEmailModal] = useState(false);
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [isSignUp, setIsSignUp] = useState(false);
+      const [authLoading, setAuthLoading] = useState(false);
+      
+      // New states for Chat and Screen Sharing
+      const [messages, setMessages] = useState([]);
+      const [newMessage, setNewMessage] = useState('');
+      const [showChat, setShowChat] = useState(false);
+      const [isScreenSharing, setIsScreenSharing] = useState(false);
+      const [screenStream, setScreenStream] = useState(null);
+
+      const pc = useRef(null);
+      const localVideoRef = useRef(null);
+      const remoteVideoRef = useRef(null);
+      const incomingCallUnsubscribe = useRef(null);
+      const durationInterval = useRef(null);
+      
+      // Audio Refs
+      const ringtoneRef = useRef(null); // Incoming
+      const callingSoundRef = useRef(null); // Outgoing
+
+      useEffect(() => {
+        ringtoneRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/135/135-preview.mp3');
+        callingSoundRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+        ringtoneRef.current.loop = true;
+        callingSoundRef.current.loop = true;
+
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+      }, []);
+
+      useEffect(() => {
+        if (callId && isCalling) {
+          durationInterval.current = setInterval(() => {
+            setCallDuration(prev => prev + 1);
+          }, 1000);
+        } else {
+          clearInterval(durationInterval.current);
+          setCallDuration(0);
+        }
+        return () => clearInterval(durationInterval.current);
+      }, [callId, isCalling]);
+
+      const formatDuration = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+      };
+
+      useEffect(() => {
+        async function testConnection() {
+          try {
+            await getDocFromServer(doc(db, 'test', 'connection'));
+          } catch (error) {
+            if(error instanceof Error && error.message.includes('the client is offline')) {
+              console.error("Please check your Firebase configuration. ");
+            }
+          }
+        }
+        testConnection();
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setError('Media devices API is not supported in this browser or context. Please use a modern browser like Chrome or Safari over HTTPS.');
+        }
+
+        const checkPermissions = async () => {
+          if (navigator.permissions && navigator.permissions.query) {
+            try {
+              const cam = await navigator.permissions.query({ name: 'camera' });
+              const mic = await navigator.permissions.query({ name: 'microphone' });
+              
+              const updateStatus = () => {
+                 if (cam.state === 'denied' || mic.state === 'denied') {
+                   setError('Permission denied. Please click the camera icon in your browser address bar and allow access.');
+                 }
+              };
+              cam.onchange = updateStatus;
+              mic.onchange = updateStatus;
+              updateStatus();
+            } catch (e) {
+              console.warn('Permissions API not fully supported', e);
+            }
+          }
+        };
+        checkPermissions();
+
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+          if (user) {
+            const userDoc = doc(db, 'users', user.uid);
+            try {
+              const docSnap = await getDoc(userDoc);
+              let userData = docSnap.exists() ? docSnap.data() : null;
+              
+              if (!userData || !userData.username) {
+                const newUsername = generateReadableId();
+                await setDoc(userDoc, {
+                  uid: user.uid,
+                  displayName: user.displayName,
+                  email: user.email,
+                  photoURL: user.photoURL,
+                  username: newUsername,
+                  lastSeen: new Date().toISOString()
+                }, { merge: true });
+                setCustomId(newUsername);
+              } else {
+                setCustomId(userData.username);
+              }
+            } catch (err) {
+              handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+            }
+            setUser(user);
+            
+            setTimeout(() => {
+              if (incomingCallUnsubscribe.current) incomingCallUnsubscribe.current();
+              incomingCallUnsubscribe.current = setupIncomingCallListener(user.uid);
+            }, 500);
+          } else {
+            setUser(null);
+            if (incomingCallUnsubscribe.current) {
+              incomingCallUnsubscribe.current();
+              incomingCallUnsubscribe.current = null;
+            }
+          }
+          setLoading(false);
+        });
+        return () => {
+          unsubscribe();
+          if (incomingCallUnsubscribe.current) incomingCallUnsubscribe.current();
+        };
+      }, []);
+
+      useEffect(() => {
+        if (!user) return;
+        
+        const q = query(
+          collection(db, 'calls'),
+          or(where('callerId', '==', user.uid), where('receiverId', '==', user.uid)),
+          orderBy('createdAt', 'desc'),
+          limit(20)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setCallHistory(history);
+        }, (error) => {
+          console.warn('Call history fetch failed:', error);
+        });
+
+        return () => unsubscribe();
+      }, [user]);
+
+      const [incomingCallerName, setIncomingCallerName] = useState('Someone');
+
+      const setupIncomingCallListener = (uid) => {
+        const q = query(
+          collection(db, 'calls'),
+          where('receiverId', '==', uid),
+          where('status', '==', 'pending')
+        );
+
+        const unsubscribeIncoming = onSnapshot(q, async (snapshot) => {
+          snapshot.docChanges().forEach(async (change) => {
+            if (change.type === 'added') {
+              const callData = { id: change.doc.id, ...change.doc.data() };
+              setIncomingCallData(callData);
+              setIsIncomingCall(true);
+              ringtoneRef.current?.play().catch(() => {});
+              
+              // Fetch caller name
+              try {
+                const callerDoc = await getDoc(doc(db, 'users', callData.callerId));
+                if (callerDoc.exists()) {
+                  setIncomingCallerName(callerDoc.data().username || 'Someone');
+                }
+              } catch (e) {}
+
+              if (Notification.permission === 'granted') {
+                new Notification('Incoming Video Call', {
+                  body: `${incomingCallerName} is calling you on LiveCall.io`,
+                  icon: 'https://picsum.photos/seed/livecall/192/192'
+                });
+              }
+            }
+            if (change.type === 'removed') {
+              setIsIncomingCall(false);
+              setIncomingCallData(null);
+              ringtoneRef.current?.pause();
+              ringtoneRef.current.currentTime = 0;
+            }
+          });
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, 'calls');
+        });
+
+        // Listen for missed calls
+        const missedQ = query(
+          collection(db, 'calls'),
+          where('receiverId', '==', uid),
+          where('status', '==', 'ended')
+        );
+        const unsubscribeMissed = onSnapshot(missedQ, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              const now = new Date();
+              const createdAt = new Date(data.createdAt);
+              if (now - createdAt < 60000) {
+                if (Notification.permission === 'granted') {
+                  new Notification('Missed Call', {
+                    body: 'You missed a video call.',
+                    icon: 'https://picsum.photos/seed/livecall/192/192'
+                  });
+                }
+              }
+            }
+          });
+        });
+
+        return () => {
+          unsubscribeIncoming();
+          unsubscribeMissed();
+        };
+      };
+
+      const startLocalStream = async () => {
+        setError(null);
+        console.log('Attempting to start local stream...');
+        try {
+          if (!window.isSecureContext) {
+            const msg = 'Camera/Mic access requires a secure context (HTTPS). Current origin: ' + window.location.origin;
+            setError(msg);
+            console.error(msg);
+            return null;
+          }
+
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            const msg = 'Media devices API is not supported in this browser or context. Check if permissions are blocked by a policy.';
+            setError(msg);
+            console.error(msg);
+            return null;
+          }
+
+          let stream;
+          try {
+            // Try with ideal constraints first
+            stream = await navigator.mediaDevices.getUserMedia({ 
+              video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
+              audio: true 
+            });
+          } catch (e) {
+            console.warn('Failed with ideal constraints, trying simple constraints...', e);
+            // Fallback to simple constraints
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          }
+          
+          setLocalStream(stream);
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
+          }
+          console.log('Local stream started successfully');
+          return stream;
+        } catch (err) {
+          console.error('getUserMedia error:', err);
+          let userMsg = '';
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            userMsg = 'Permission denied. Please click the camera icon in your browser address bar and allow access. If you are on mobile, check your system settings for the browser.';
+          } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            userMsg = 'No camera or microphone found on this device. Please connect one and try again.';
+          } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            userMsg = 'Camera or microphone is already in use by another application or blocked by system settings.';
+          } else if (err.name === 'OverconstrainedError') {
+            userMsg = 'Your camera does not support the requested resolution. Try refreshing the page.';
+          } else {
+            userMsg = `Could not access media devices: ${err.message || err.name || 'Unknown error'}`;
+          }
+          setError(userMsg);
+          return null;
+        }
+      };
+
+      const setupPeerConnection = async (stream) => {
+        pc.current = new RTCPeerConnection(servers);
+
+        stream.getTracks().forEach((track) => {
+          pc.current?.addTrack(track, stream);
+        });
+
+        pc.current.ontrack = (event) => {
+          const [remoteStream] = event.streams;
+          setRemoteStream(remoteStream);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+          }
+        };
+
+        return pc.current;
+      };
+
+      const sendMessage = async () => {
+        if (!newMessage.trim() || !callId) return;
+        const msg = {
+          text: newMessage,
+          senderId: user.uid,
+          createdAt: new Date().toISOString()
+        };
+        try {
+          await addDoc(collection(db, 'calls', callId, 'messages'), msg);
+          setNewMessage('');
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `calls/${callId}/messages`);
+        }
+      };
+
+      const toggleScreenShare = async () => {
+        if (!isScreenSharing) {
+          try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            setScreenStream(stream);
+            setIsScreenSharing(true);
+            
+            const videoTrack = stream.getVideoTracks()[0];
+            const sender = pc.current.getSenders().find(s => s.track.kind === 'video');
+            if (sender) sender.replaceTrack(videoTrack);
+
+            videoTrack.onended = () => {
+              stopScreenShare();
+            };
+          } catch (err) {
+            console.error('Screen sharing error:', err);
+          }
+        } else {
+          stopScreenShare();
+        }
+      };
+
+      const stopScreenShare = async () => {
+        if (screenStream) {
+          screenStream.getTracks().forEach(t => t.stop());
+          setScreenStream(null);
+        }
+        setIsScreenSharing(false);
+        const videoTrack = localStream.getVideoTracks()[0];
+        const sender = pc.current.getSenders().find(s => s.track.kind === 'video');
+        if (sender) sender.replaceTrack(videoTrack);
+      };
+
+      const toggleFullscreen = (enable) => {
+        if (enable) {
+          if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(err => {
+              console.warn(`Error attempting to enable full-screen mode: ${err.message}`);
+            });
+          }
+        } else {
+          if (document.exitFullscreen && document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+          }
+        }
+      };
+
+      const createCall = async () => {
+        if (!remoteUserId) return;
+        setIsCalling(true);
+        setError(null);
+        callingSoundRef.current?.play().catch(() => {});
+        toggleFullscreen(true);
+
+        let targetUid = remoteUserId;
+        // Check if input is a username
+        try {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('username', '==', remoteUserId));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            targetUid = querySnapshot.docs[0].data().uid;
+          }
+        } catch (err) {
+          console.warn('Username search failed', err);
+        }
+
+        const stream = await startLocalStream();
+        if (!stream) {
+          setIsCalling(false);
+          return;
+        }
+
+        const peerConnection = await setupPeerConnection(stream);
+        const callDoc = doc(collection(db, 'calls'));
+        const callerCandidates = collection(callDoc, 'callerCandidates');
+        const receiverCandidates = collection(callDoc, 'receiverCandidates');
+
+        setCallId(callDoc.id);
+        setIsCaller(true);
+
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            addDoc(callerCandidates, event.candidate.toJSON()).catch(err => {
+              handleFirestoreError(err, OperationType.WRITE, `calls/${callDoc.id}/callerCandidates`);
+            });
+          }
+        };
+
+        const offerDescription = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offerDescription);
+
+        const offer = {
+          sdp: offerDescription.sdp,
+          type: offerDescription.type,
+        };
+
+        try {
+          await setDoc(callDoc, {
+            callerId: user.uid,
+            receiverId: targetUid,
+            offer,
+            status: 'pending',
+            muteRemote: false,
+            createdAt: new Date().toISOString()
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `calls/${callDoc.id}`);
+        }
+
+        onSnapshot(callDoc, (snapshot) => {
+          const data = snapshot.data();
+          if (!peerConnection.currentRemoteDescription && data?.answer) {
+            const answerDescription = new RTCSessionDescription(data.answer);
+            peerConnection.setRemoteDescription(answerDescription);
+          }
+          if (data?.status === 'accepted') {
+            callingSoundRef.current?.pause();
+            callingSoundRef.current.currentTime = 0;
+          }
+          if (data?.status === 'rejected') {
+            endCall();
+            setError('Call rejected');
+          }
+          if (data?.status === 'ended') {
+            endCall();
+          }
+          if (data?.callerId === user.uid) {
+            setIsRemoteMutedByHost(data.muteRemote);
+          }
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `calls/${callDoc.id}`);
+        });
+
+        onSnapshot(receiverCandidates, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              const candidate = new RTCIceCandidate(data);
+              peerConnection.addIceCandidate(candidate);
+            }
+          });
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `calls/${callDoc.id}/receiverCandidates`);
+        });
+
+        // Listen for messages
+        onSnapshot(collection(callDoc, 'messages'), (snapshot) => {
+          const msgs = snapshot.docs.map(doc => doc.data()).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+          setMessages(msgs);
+        });
+      };
+
+      const answerCall = async () => {
+        if (!incomingCallData) return;
+        setIsIncomingCall(false);
+        setIsCalling(true);
+        ringtoneRef.current?.pause();
+        ringtoneRef.current.currentTime = 0;
+        toggleFullscreen(true);
+
+        const stream = await startLocalStream();
+        if (!stream) {
+          setIsCalling(false);
+          return;
+        }
+
+        const peerConnection = await setupPeerConnection(stream);
+        const callDoc = doc(db, 'calls', incomingCallData.id);
+        const callerCandidates = collection(callDoc, 'callerCandidates');
+        const receiverCandidates = collection(callDoc, 'receiverCandidates');
+
+        setCallId(callDoc.id);
+        setIsCaller(false);
+
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            addDoc(receiverCandidates, event.candidate.toJSON()).catch(err => {
+              handleFirestoreError(err, OperationType.WRITE, `calls/${callDoc.id}/receiverCandidates`);
+            });
+          }
+        };
+
+        const offerDescription = incomingCallData.offer;
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offerDescription));
+
+        const answerDescription = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answerDescription);
+
+        const answer = {
+          type: answerDescription.type,
+          sdp: answerDescription.sdp,
+        };
+
+        try {
+          await updateDoc(callDoc, { answer, status: 'accepted' });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `calls/${callDoc.id}`);
+        }
+
+        onSnapshot(callerCandidates, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              peerConnection.addIceCandidate(new RTCIceCandidate(data));
+            }
+          });
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `calls/${callDoc.id}/callerCandidates`);
+        });
+
+        onSnapshot(callDoc, (snapshot) => {
+          const data = snapshot.data();
+          if (data?.status === 'ended') {
+            endCall();
+          }
+          // Listen for host mute command
+          if (data?.callerId !== user.uid && data?.muteRemote !== undefined) {
+            stream.getAudioTracks().forEach(track => {
+              track.enabled = !data.muteRemote;
+            });
+            setIsMicOn(!data.muteRemote);
+          }
+          if (data?.callerId === user.uid) {
+            setIsRemoteMutedByHost(data.muteRemote);
+          }
+          if (data?.status === 'accepted') {
+            callingSoundRef.current?.pause();
+            callingSoundRef.current.currentTime = 0;
+          }
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `calls/${callDoc.id}`);
+        });
+
+        // Listen for messages
+        onSnapshot(collection(callDoc, 'messages'), (snapshot) => {
+          const msgs = snapshot.docs.map(doc => doc.data()).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+          setMessages(msgs);
+        });
+      };
+
+      const rejectCall = async () => {
+        if (!incomingCallData) return;
+        ringtoneRef.current?.pause();
+        ringtoneRef.current.currentTime = 0;
+        const callDoc = doc(db, 'calls', incomingCallData.id);
+        try {
+          await updateDoc(callDoc, { status: 'rejected' });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `calls/${incomingCallData.id}`);
+        }
+        setIsIncomingCall(false);
+        setIncomingCallData(null);
+      };
+
+      const endCall = async () => {
+        ringtoneRef.current?.pause();
+        ringtoneRef.current.currentTime = 0;
+        callingSoundRef.current?.pause();
+        callingSoundRef.current.currentTime = 0;
+
+        if (screenStream) {
+          screenStream.getTracks().forEach(t => t.stop());
+          setScreenStream(null);
+        }
+        setIsScreenSharing(false);
+        
+        if (callId) {
+          const callDoc = doc(db, 'calls', callId);
+          try {
+            await updateDoc(callDoc, { status: 'ended' });
+          } catch (err) {
+          }
+        }
+
+        if (localStream) {
+          localStream.getTracks().forEach(track => track.stop());
+        }
+        
+        if (pc.current) {
+          pc.current.close();
+          pc.current = null;
+        }
+
+        setLocalStream(null);
+        setRemoteStream(null);
+        setCallId(null);
+        setIsCalling(false);
+        setIncomingCallData(null);
+        setIsIncomingCall(false);
+        setIsCaller(false);
+        setMessages([]);
+        setShowChat(false);
+        setNewMessage('');
+        toggleFullscreen(false);
+      };
+
+      const toggleMic = () => {
+        if (localStream) {
+          localStream.getAudioTracks().forEach(track => {
+            track.enabled = !track.enabled;
+          });
+          setIsMicOn(!isMicOn);
+        }
+      };
+
+      const toggleCam = () => {
+        if (localStream) {
+          localStream.getVideoTracks().forEach(track => {
+            track.enabled = !track.enabled;
+          });
+          setIsCamOn(!isCamOn);
+        }
+      };
+
+      const login = async () => {
+        setError(null);
+        try {
+          await signInWithPopup(auth, googleProvider);
+        } catch (err) {
+          console.error('Login Error:', err);
+          if (err.code === 'auth/unauthorized-domain') {
+            setError('Domain not authorized. Add your GitHub Pages URL to "Authorized domains" in Firebase Console.');
+          } else if (err.code === 'auth/popup-blocked') {
+            setError('Popup blocked by browser. Please allow popups for this site.');
+          } else {
+            setError(`Login failed: ${err.message}`);
+          }
+        }
+      };
+
+      const handleEmailAuth = async (e) => {
+        e.preventDefault();
+        setError(null);
+        setAuthLoading(true);
+        try {
+          if (isSignUp) {
+            await createUserWithEmailAndPassword(auth, email, password);
+          } else {
+            await signInWithEmailAndPassword(auth, email, password);
+          }
+          setShowEmailModal(false);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setAuthLoading(false);
+        }
+      };
+
+      const logout = () => {
+        signOut(auth);
+      };
+
+      const toggleMuteAll = async () => {
+        if (callId) {
+          const callDoc = doc(db, 'calls', callId);
+          await updateDoc(callDoc, { muteRemote: !isRemoteMutedByHost });
+        }
+      };
+
+      const updateCustomId = async () => {
+        if (!customId.trim()) return;
+        const userDoc = doc(db, 'users', user.uid);
+        try {
+          await updateDoc(userDoc, { username: customId });
+          setIsEditingId(false);
+        } catch (err) {
+          setError('Could not update ID');
+        }
+      };
+
+      const copyId = () => {
+        if (customId) {
+          navigator.clipboard.writeText(customId);
+        }
+      };
+
+      if (loading) {
+        return React.createElement('div', { className: "min-h-screen bg-neutral-950 flex items-center justify-center" },
+          React.createElement(Loader2, { className: "w-8 h-8 text-orange-500 animate-spin" })
+        );
+      }
+
+      if (!user) {
+        return React.createElement('div', { className: "min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-4" },
+          React.createElement(motion.div, { 
+            initial: { opacity: 0, y: 20 },
+            animate: { opacity: 1, y: 0 },
+            className: "max-w-md w-full text-center space-y-8"
+          },
+            React.createElement('div', { className: "space-y-2" },
+              React.createElement('h1', { className: "text-5xl font-bold tracking-tighter text-white" }, "LiveCall", React.createElement('span', { className: "text-orange-500" }, ".io")),
+              React.createElement('p', { className: "text-neutral-400" }, "Simple, secure, and instant video calls.")
+            ),
+            React.createElement('div', { className: "space-y-4" },
+              React.createElement('button', { 
+                onClick: login,
+                className: "w-full bg-white text-black font-semibold py-4 rounded-2xl hover:bg-neutral-200 transition-colors flex items-center justify-center gap-3"
+              },
+                React.createElement('img', { src: "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg", className: "w-6 h-6", alt: "Google" }),
+                "Continue with Google"
+              ),
+              React.createElement('button', { 
+                onClick: () => setShowEmailModal(true),
+                className: "w-full bg-neutral-900 text-white border border-neutral-800 font-semibold py-4 rounded-2xl hover:bg-neutral-800 transition-colors flex items-center justify-center gap-3"
+              },
+                React.createElement(User, { className: "w-5 h-5 text-neutral-400" }),
+                "Login with Email"
+              )
+            ),
+            error && React.createElement('p', { className: "text-red-500 text-sm bg-red-500/10 p-4 rounded-xl border border-red-500/20" }, error),
+            
+            React.createElement(AnimatePresence, null,
+              showEmailModal && React.createElement(motion.div, {
+                initial: { opacity: 0 },
+                animate: { opacity: 1 },
+                exit: { opacity: 0 },
+                className: "fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              },
+                React.createElement(motion.div, {
+                  initial: { scale: 0.9, y: 20 },
+                  animate: { scale: 1, y: 0 },
+                  className: "bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-sm w-full space-y-6 shadow-2xl"
+                },
+                  React.createElement('div', { className: "flex justify-between items-center" },
+                    React.createElement('h3', { className: "text-xl font-bold" }, isSignUp ? "Create Account" : "Welcome Back"),
+                    React.createElement('button', { onClick: () => setShowEmailModal(false) }, React.createElement(X, { className: "w-5 h-5 text-neutral-500" }))
+                  ),
+                  React.createElement('form', { onSubmit: handleEmailAuth, className: "space-y-4" },
+                    React.createElement('div', { className: "space-y-2" },
+                      React.createElement('label', { className: "text-xs text-neutral-500 uppercase font-bold" }, "Email Address"),
+                      React.createElement('input', { 
+                        type: "email", 
+                        required: true,
+                        value: email,
+                        onChange: (e) => setEmail(e.target.value),
+                        className: "w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 transition-colors"
+                      })
+                    ),
+                    React.createElement('div', { className: "space-y-2" },
+                      React.createElement('label', { className: "text-xs text-neutral-500 uppercase font-bold" }, "Password"),
+                      React.createElement('input', { 
+                        type: "password", 
+                        required: true,
+                        value: password,
+                        onChange: (e) => setPassword(e.target.value),
+                        className: "w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 transition-colors"
+                      })
+                    ),
+                    React.createElement('button', { 
+                      type: "submit",
+                      disabled: authLoading,
+                      className: "w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-xl font-bold transition-colors flex items-center justify-center"
+                    }, authLoading ? React.createElement(Loader2, { className: "w-5 h-5 animate-spin" }) : (isSignUp ? "Sign Up" : "Sign In")),
+                    React.createElement('button', { 
+                      type: "button",
+                      onClick: () => setIsSignUp(!isSignUp),
+                      className: "w-full text-sm text-neutral-400 hover:text-white transition-colors"
+                    }, isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up")
+                  )
+                )
+              )
+            )
+          )
+        );
+      }
+
+      return React.createElement('div', { className: "min-h-screen bg-neutral-950 text-white font-sans selection:bg-orange-500/30" },
+        React.createElement('header', { className: "p-6 flex items-center justify-between max-w-7xl mx-auto" },
+          React.createElement('h1', { className: "text-2xl font-bold tracking-tighter" }, "LiveCall", React.createElement('span', { className: "text-orange-500" }, ".io")),
+          React.createElement('div', { className: "flex items-center gap-4" },
+            React.createElement('button', { 
+              onClick: () => setShowHistory(true),
+              className: "p-2 hover:bg-neutral-900 rounded-full transition-colors relative"
+            },
+              React.createElement(History, { className: "w-5 h-5 text-neutral-400" }),
+              callHistory.length > 0 && React.createElement('span', { className: "absolute top-1 right-1 w-2 h-2 bg-orange-500 rounded-full" })
+            ),
+            React.createElement('div', { className: "flex items-center gap-2 bg-neutral-900 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-neutral-800" },
+              React.createElement('span', { className: "hidden md:inline text-xs text-neutral-500 uppercase tracking-widest font-semibold" }, "Your ID:"),
+              isEditingId ? 
+                React.createElement('div', { className: "flex items-center gap-2" },
+                  React.createElement('input', { 
+                    value: customId,
+                    onChange: (e) => setCustomId(e.target.value),
+                    className: "bg-black border border-neutral-800 rounded px-2 py-1 text-xs sm:text-sm font-mono text-orange-500 w-24 sm:w-32 focus:outline-none focus:border-orange-500"
+                  }),
+                  React.createElement('button', { onClick: updateCustomId, className: "text-[10px] sm:text-xs text-green-500 font-bold" }, "Save")
+                ) :
+                React.createElement('div', { className: "flex items-center gap-2" },
+                  React.createElement('code', { className: "text-xs sm:text-sm font-mono text-orange-500" }, customId),
+                  React.createElement('button', { onClick: () => setIsEditingId(true), className: "hover:text-orange-500 transition-colors" }, React.createElement(User, { className: "w-3 h-3 sm:w-4 sm:h-4" })),
+                  React.createElement('button', { onClick: copyId, className: "hover:text-orange-500 transition-colors" }, React.createElement(Copy, { className: "w-3 h-3 sm:w-4 sm:h-4" }))
+                )
+            ),
+            React.createElement('button', { onClick: logout, className: "p-2 hover:bg-neutral-900 rounded-full transition-colors" }, React.createElement(LogOut, { className: "w-5 h-5 text-neutral-400" }))
+          )
+        ),
+        React.createElement('main', { className: "max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8" },
+          React.createElement('div', { className: "lg:col-span-4 space-y-6" },
+            React.createElement('div', { className: "bg-neutral-900 p-8 rounded-3xl border border-neutral-800 space-y-6" },
+              React.createElement('div', { className: "space-y-2" },
+                React.createElement('h2', { className: "text-xl font-semibold" }, "Start a Call"),
+                React.createElement('p', { className: "text-sm text-neutral-400" }, "Enter a user ID to start a video conversation.")
+              ),
+              React.createElement('div', { className: "space-y-4" },
+                React.createElement('input', { 
+                  type: "text", 
+                  placeholder: "Enter ID or Username...",
+                  value: remoteUserId,
+                  onChange: (e) => setRemoteUserId(e.target.value),
+                  className: "w-full bg-black border border-neutral-800 rounded-2xl px-4 py-4 focus:outline-none focus:border-orange-500 transition-colors font-mono text-sm"
+                }),
+                React.createElement('button', { 
+                  onClick: createCall,
+                  disabled: !remoteUserId || isCalling,
+                  className: "w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
+                }, React.createElement(Phone, { className: "w-5 h-5" }), "Call Now"),
+                React.createElement('button', { 
+                  onClick: async () => {
+                    const s = await startLocalStream();
+                    if (s) {
+                      s.getTracks().forEach(t => t.stop());
+                      setLocalStream(null);
+                      setError(null);
+                      alert('Camera and Microphone access confirmed!');
+                    }
+                  },
+                  className: "w-full bg-neutral-800 hover:bg-neutral-700 text-white font-semibold py-3 rounded-2xl transition-all flex items-center justify-center gap-2"
+                }, React.createElement(Video, { className: "w-4 h-4" }), "Test Camera & Mic")
+              ),
+              error && React.createElement('p', { className: "text-red-500 text-sm text-center" }, error)
+            ),
+            React.createElement('div', { className: "bg-neutral-900 p-6 rounded-3xl border border-neutral-800 flex items-center gap-4" },
+              React.createElement('img', { src: user.photoURL, alt: user.displayName, className: "w-12 h-12 rounded-full border-2 border-orange-500" }),
+              React.createElement('div', { className: "flex-1 min-w-0" },
+                React.createElement('p', { className: "font-semibold truncate" }, user.displayName),
+                React.createElement('p', { className: "text-xs text-neutral-500 truncate" }, user.email),
+                React.createElement('div', { className: "mt-2 flex items-center gap-2" },
+                  React.createElement('span', { className: "text-[10px] text-neutral-500 uppercase font-bold" }, "ID:"),
+                  React.createElement('code', { className: "text-xs font-mono text-orange-500" }, customId)
+                )
+              )
+            )
+          ),
+          React.createElement('div', { className: `lg:col-span-8 relative aspect-video lg:aspect-auto lg:h-[600px] bg-black rounded-3xl overflow-hidden border border-neutral-800 shadow-2xl ${isCalling ? 'fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-0' : ''}` },
+            React.createElement(AnimatePresence, null,
+              !isCalling && React.createElement(motion.div, { 
+                initial: { opacity: 0 },
+                animate: { opacity: 1 },
+                exit: { opacity: 0 },
+                className: "absolute inset-0 flex flex-col items-center justify-center text-neutral-500 space-y-4"
+              },
+                React.createElement('div', { className: "w-20 h-20 bg-neutral-900 rounded-full flex items-center justify-center" }, React.createElement(Video, { className: "w-10 h-10" })),
+                React.createElement('p', null, "No active call")
+              ),
+              isCalling && React.createElement(motion.div, { 
+                initial: { opacity: 0 },
+                animate: { opacity: 1 },
+                exit: { opacity: 0 },
+                className: "absolute inset-0 flex flex-col lg:flex-row"
+              },
+                React.createElement('div', { className: `relative flex-1 bg-black group ${showChat ? 'hidden lg:block' : 'block'}` },
+                  React.createElement('video', { 
+                    ref: remoteVideoRef, 
+                    autoPlay: true, 
+                    playsInline: true, 
+                    className: "w-full h-full object-cover" 
+                  }),
+                  React.createElement('div', { className: "absolute top-6 left-6 flex items-center gap-3 bg-black/40 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10" },
+                    React.createElement('div', { className: "w-2 h-2 bg-red-500 rounded-full animate-pulse" }),
+                    React.createElement('span', { className: "text-sm font-mono font-bold" }, formatDuration(callDuration))
+                  ),
+                  React.createElement('div', { className: "absolute top-6 right-6 w-32 sm:w-48 aspect-video bg-neutral-900 rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl z-10" },
+                    React.createElement('video', { 
+                      ref: localVideoRef, 
+                      autoPlay: true, 
+                      playsInline: true, 
+                      muted: true, 
+                      className: "w-full h-full object-cover mirror" 
+                    }),
+                    !isCamOn && React.createElement('div', { className: "absolute inset-0 bg-neutral-900 flex items-center justify-center" }, React.createElement(User, { className: "w-8 h-8 text-neutral-700" }))
+                  ),
+                  React.createElement('div', { className: "absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 sm:gap-4 bg-black/40 backdrop-blur-xl p-3 sm:p-4 rounded-3xl border border-white/10 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" },
+                    React.createElement('button', { 
+                      onClick: toggleMic,
+                      className: `p-3 sm:p-4 rounded-2xl transition-all ${isMicOn ? 'bg-neutral-800 hover:bg-neutral-700' : 'bg-red-500 hover:bg-red-600'}`
+                    }, isMicOn ? React.createElement(Mic, { className: "w-5 h-5 sm:w-6 sm:h-6" }) : React.createElement(MicOff, { className: "w-5 h-5 sm:w-6 sm:h-6" })),
+                    React.createElement('button', { 
+                      onClick: toggleCam,
+                      className: `p-3 sm:p-4 rounded-2xl transition-all ${isCamOn ? 'bg-neutral-800 hover:bg-neutral-700' : 'bg-red-500 hover:bg-red-600'}`
+                    }, isCamOn ? React.createElement(Video, { className: "w-5 h-5 sm:w-6 sm:h-6" }) : React.createElement(VideoOff, { className: "w-5 h-5 sm:w-6 sm:h-6" })),
+                    React.createElement('button', { 
+                      onClick: toggleScreenShare,
+                      className: `p-3 sm:p-4 rounded-2xl transition-all ${isScreenSharing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-neutral-800 hover:bg-neutral-700'}`
+                    }, React.createElement(MonitorUp, { className: "w-5 h-5 sm:w-6 sm:h-6" })),
+                    React.createElement('button', { 
+                      onClick: () => setShowChat(!showChat),
+                      className: `p-3 sm:p-4 rounded-2xl transition-all ${showChat ? 'bg-orange-500 hover:bg-orange-600' : 'bg-neutral-800 hover:bg-neutral-700'}`
+                    }, React.createElement(MessageSquare, { className: "w-5 h-5 sm:w-6 sm:h-6" })),
+                    isCaller && React.createElement('button', { 
+                      onClick: toggleMuteAll,
+                      className: `p-3 sm:p-4 rounded-2xl transition-all ${isRemoteMutedByHost ? 'bg-red-500 hover:bg-red-600' : 'bg-neutral-800 hover:bg-neutral-700'}`
+                    }, React.createElement(MicOff, { className: "w-5 h-5 sm:w-6 sm:h-6 text-white" })),
+                    React.createElement('button', { 
+                      onClick: endCall,
+                      className: "p-3 sm:p-4 bg-red-500 hover:bg-red-600 rounded-2xl transition-all shadow-lg shadow-red-500/40"
+                    }, React.createElement(PhoneOff, { className: "w-5 h-5 sm:w-6 sm:h-6" }))
+                  )
+                ),
+                showChat && React.createElement('div', { className: "w-full lg:w-80 bg-neutral-900 border-l border-neutral-800 flex flex-col h-full" },
+                  React.createElement('div', { className: "p-4 border-b border-neutral-800 flex justify-between items-center" },
+                    React.createElement('h3', { className: "font-bold" }, "Chat"),
+                    React.createElement('button', { onClick: () => setShowChat(false), className: "lg:hidden" }, React.createElement(X, { className: "w-5 h-5" }))
+                  ),
+                  React.createElement('div', { className: "flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar" },
+                    messages.map((msg, i) => (
+                      React.createElement('div', { key: i, className: `flex flex-col ${msg.senderId === user.uid ? 'items-end' : 'items-start'}` },
+                        React.createElement('div', { className: `max-w-[80%] p-3 rounded-2xl text-sm ${msg.senderId === user.uid ? 'bg-orange-500 text-white' : 'bg-neutral-800 text-neutral-200'}` }, msg.text),
+                        React.createElement('span', { className: "text-[10px] text-neutral-500 mt-1" }, new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+                      )
+                    ))
+                  ),
+                  React.createElement('div', { className: "p-4 bg-black/20" },
+                    React.createElement('div', { className: "relative" },
+                      React.createElement('input', { 
+                        type: "text",
+                        value: newMessage,
+                        onChange: (e) => setNewMessage(e.target.value),
+                        onKeyPress: (e) => e.key === 'Enter' && sendMessage(),
+                        placeholder: "Type a message...",
+                        className: "w-full bg-black border border-neutral-800 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-orange-500"
+                      }),
+                      React.createElement('button', { 
+                        onClick: sendMessage,
+                        className: "absolute right-2 top-1/2 -translate-y-1/2 p-2 text-orange-500 hover:text-orange-400"
+                      }, React.createElement(Send, { className: "w-5 h-5" }))
+                    )
+                  )
+                )
+              )
+            )
+          )
+        ),
+        React.createElement(AnimatePresence, null,
+          isIncomingCall && React.createElement(motion.div, { 
+            initial: { opacity: 0 },
+            animate: { opacity: 1 },
+            exit: { opacity: 0 },
+            className: "fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          },
+            React.createElement(motion.div, { 
+              initial: { scale: 0.9, y: 20 },
+              animate: { scale: 1, y: 0 },
+              className: "bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-sm w-full text-center space-y-6 shadow-2xl"
+            },
+              React.createElement('div', { className: "relative mx-auto w-24 h-24" },
+                React.createElement('div', { className: "absolute inset-0 bg-orange-500 rounded-full animate-ping opacity-20" }),
+                React.createElement('div', { className: "relative bg-neutral-800 rounded-full w-full h-full flex items-center justify-center" }, React.createElement(Phone, { className: "w-10 h-10 text-orange-500" }))
+              ),
+              React.createElement('div', { className: "space-y-1" },
+                React.createElement('h3', { className: "text-xl font-bold" }, "Incoming Call"),
+                React.createElement('p', { className: "text-neutral-400 text-sm" }, `${incomingCallerName} is calling you...`)
+              ),
+              React.createElement('div', { className: "flex gap-4" },
+                React.createElement('button', { onClick: rejectCall, className: "flex-1 bg-neutral-800 hover:bg-neutral-700 py-4 rounded-2xl font-semibold transition-colors" }, "Decline"),
+                React.createElement('button', { onClick: answerCall, className: "flex-1 bg-orange-500 hover:bg-orange-600 py-4 rounded-2xl font-semibold transition-colors" }, "Accept")
+              )
+            )
+          )
+        ),
+        React.createElement(AnimatePresence, null,
+          showHistory && React.createElement(React.Fragment, null,
+            React.createElement(motion.div, { 
+              initial: { opacity: 0 },
+              animate: { opacity: 1 },
+              exit: { opacity: 0 },
+              onClick: () => setShowHistory(false),
+              className: "fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            }),
+            React.createElement(motion.div, { 
+              initial: { x: '100%' },
+              animate: { x: 0 },
+              exit: { x: '100%' },
+              className: "fixed right-0 top-0 bottom-0 w-full max-w-sm bg-neutral-900 border-l border-neutral-800 z-50 p-6 flex flex-col"
+            },
+              React.createElement('div', { className: "flex items-center justify-between mb-8" },
+                React.createElement('h2', { className: "text-xl font-bold flex items-center gap-2" }, React.createElement(Clock, { className: "w-5 h-5 text-orange-500" }), "Call History"),
+                React.createElement('button', { onClick: () => setShowHistory(false), className: "p-2 hover:bg-neutral-800 rounded-full transition-colors" }, React.createElement(X, { className: "w-5 h-5" }))
+              ),
+              React.createElement('div', { className: "flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar" },
+                callHistory.length === 0 ? React.createElement('div', { className: "h-full flex flex-col items-center justify-center text-neutral-500 space-y-2" }, React.createElement(History, { className: "w-12 h-12 opacity-20" }), React.createElement('p', null, "No call history yet")) :
+                callHistory.map((call) => {
+                  const isCaller = call.callerId === user.uid;
+                  const otherId = isCaller ? call.receiverId : call.callerId;
+                  const date = new Date(call.createdAt);
+                  return React.createElement('div', { key: call.id, className: "bg-neutral-800/50 p-4 rounded-2xl border border-neutral-700/50 hover:border-orange-500/30 transition-colors group" },
+                    React.createElement('div', { className: "flex items-start justify-between" },
+                      React.createElement('div', { className: "flex items-center gap-3" },
+                        React.createElement('div', { className: `p-2 rounded-xl ${isCaller ? 'bg-blue-500/10 text-blue-500' : 'bg-green-500/10 text-green-500'}` }, isCaller ? React.createElement(ArrowUpRight, { className: "w-4 h-4" }) : React.createElement(ArrowDownLeft, { className: "w-4 h-4" })),
+                        React.createElement('div', null,
+                          React.createElement('p', { className: "text-sm font-mono text-neutral-300" }, `${otherId.slice(0, 12)}...`),
+                          React.createElement('p', { className: "text-[10px] text-neutral-500 uppercase tracking-wider font-semibold" }, `${date.toLocaleDateString()} • ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`)
+                        )
+                      ),
+                      React.createElement('span', { className: `text-[10px] px-2 py-1 rounded-full uppercase font-bold tracking-tighter ${call.status === 'accepted' ? 'bg-green-500/10 text-green-500' : call.status === 'rejected' ? 'bg-red-500/10 text-red-500' : call.status === 'ended' ? 'bg-neutral-700 text-neutral-400' : 'bg-orange-500/10 text-orange-500'}` }, call.status)
+                    ),
+                    React.createElement('button', { 
+                      onClick: () => { setRemoteUserId(otherId); setShowHistory(false); },
+                      className: "w-full mt-3 py-2 bg-neutral-800 hover:bg-orange-500 text-xs font-bold rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                    }, "Call Back")
+                  );
+                })
+              )
+            )
+          )
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(ErrorBoundary, null, React.createElement(LiveCallApp, null)));
+
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then((registration) => {
+          console.log('SW registered: ', registration);
+        }).catch((registrationError) => {
+          console.log('SW registration failed: ', registrationError);
+        });
+      });
+    }
+  </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

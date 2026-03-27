@@ -1,0 +1,5 @@
+{
+  "name": "LiveCall.io",
+  "description": "A real-time video calling application with Google authentication and user ID sharing.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
