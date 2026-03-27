@@ -6,7 +6,7 @@
   <title>LiveCall.io</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#f97316">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" crossorigin></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
     
@@ -34,7 +34,6 @@
       background: #404040;
     }
   </style>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body>
   <div id="root"></div>
@@ -1218,12 +1217,32 @@
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').then((registration) => {
           console.log('SW registered: ', registration);
+          
+          // Check for updates
+          registration.onupdatefound = () => {
+            const installingWorker = registration.installing;
+            if (installingWorker) {
+              installingWorker.onstatechange = () => {
+                if (installingWorker.state === 'installed') {
+                  if (navigator.serviceWorker.controller) {
+                    // New content is available; please refresh.
+                    console.log('New content is available; please refresh.');
+                    if (confirm('A new version of LiveCall.io is available. Refresh now?')) {
+                      window.location.reload();
+                    }
+                  } else {
+                    // Content is cached for offline use.
+                    console.log('Content is cached for offline use.');
+                  }
+                }
+              };
+            }
+          };
         }).catch((registrationError) => {
           console.log('SW registration failed: ', registrationError);
         });
       });
     }
   </script>
-<script type="module" src="/index.tsx"></script>
 </body>
 </html>
